@@ -1,6 +1,5 @@
 ﻿#pragma once
 
-#include "Engine/EngineTypes.h"
 #include "AlsFeetSettings.generated.h"
 
 USTRUCT(BlueprintType)
@@ -9,17 +8,10 @@ struct ALS_API FAlsFeetSettings
 	GENERATED_BODY()
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
-	bool bDisableFootLock{false};
+	uint8 bDisableFootLock : 1 {false};
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS", Meta = (ClampMin = 0, ForceUnits = "cm"))
-	float FootHeight{13.5f};
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
-	TEnumAsByte<ECollisionChannel> IkTraceChannel{ECC_Visibility};
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS", Meta = (ClampMin = 0, ForceUnits = "cm"))
-	float IkTraceDistanceUpward{50.0f};
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS", Meta = (ClampMin = 0, ForceUnits = "cm"))
-	float IkTraceDistanceDownward{45.0f};
+	// Specifies the maximum angle by which the foot lock location can differ from the thigh
+	// bone axis. Used to prevent legs from twisting into a spiral when the actor rotates quickly.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS", Meta = (ClampMin = 0, ClampMax = 180, ForceUnits = "deg"))
+	float FootLockAngleLimit{90.0f};
 };

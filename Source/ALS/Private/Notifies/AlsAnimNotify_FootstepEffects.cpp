@@ -12,26 +12,70 @@
 #include "PhysicalMaterials/PhysicalMaterial.h"
 #include "Sound/SoundBase.h"
 #include "Utility/AlsConstants.h"
+#include "Utility/AlsDebugUtility.h"
 #include "Utility/AlsEnumUtility.h"
 #include "Utility/AlsMacros.h"
 #include "Utility/AlsMath.h"
-#include "Utility/AlsUtility.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(AlsAnimNotify_FootstepEffects)
 
+#if WITH_EDITOR
+void FAlsFootstepDecalSettings::PostEditChangeProperty(const FPropertyChangedEvent& ChangedEvent)
+{
+	FootLeftRotationOffsetQuaternion = FootLeftRotationOffset.Quaternion();
+	FootRightRotationOffsetQuaternion = FootRightRotationOffset.Quaternion();
+}
+
+void FAlsFootstepParticleSystemSettings::PostEditChangeProperty(const FPropertyChangedEvent& ChangedEvent)
+{
+	FootLeftRotationOffsetQuaternion = FootLeftRotationOffset.Quaternion();
+	FootRightRotationOffsetQuaternion = FootRightRotationOffset.Quaternion();
+}
+
+void FAlsFootstepEffectSettings::PostEditChangeProperty(const FPropertyChangedEvent& ChangedEvent)
+{
+	Decal.PostEditChangeProperty(ChangedEvent);
+	ParticleSystem.PostEditChangeProperty(ChangedEvent);
+}
+
+void UAlsFootstepEffectsSettings::PostEditChangeProperty(FPropertyChangedEvent& ChangedEvent)
+{
+	if (ChangedEvent.GetMemberPropertyName() == GET_MEMBER_NAME_STRING_VIEW_CHECKED(ThisClass, DecalSpawnAngleThreshold))
+	{
+		DecalSpawnAngleThresholdCos = FMath::Cos(FMath::DegreesToRadians(DecalSpawnAngleThreshold));
+	}
+	else if (ChangedEvent.GetMemberPropertyName() == GET_MEMBER_NAME_STRING_VIEW_CHECKED(ThisClass, Effects))
+	{
+		for (auto& Tuple : Effects)
+		{
+			Tuple.Value.PostEditChangeProperty(ChangedEvent);
+		}
+	}
+
+	Super::PostEditChangeProperty(ChangedEvent);
+}
+#endif
+
 FString UAlsAnimNotify_FootstepEffects::GetNotifyName_Implementation() const
 {
-	TStringBuilder<64> NotifyNameBuilder;
-
-	NotifyNameBuilder << TEXTVIEW("Als Footstep Effects: ") << AlsEnumUtility::GetNameStringByValue(FootBone);
+	TStringBuilder<64> NotifyNameBuilder{InPlace, TEXTVIEW("Als Footstep Effects: "), AlsEnumUtility::GetNameStringByValue(FootBone)};
 
 	return FString{NotifyNameBuilder};
 }
 
-void UAlsAnimNotify_FootstepEffects::Notify(USkeletalMeshComponent* Mesh, UAnimSequenceBase* Animation,
-                                            const FAnimNotifyEventReference& EventReference)
+#if WITH_EDITOR
+void UAlsAnimNotify_FootstepEffects::OnAnimNotifyCreatedInEditor(FAnimNotifyEvent& NotifyEvent)
 {
-	Super::Notify(Mesh, Animation, EventReference);
+	Super::OnAnimNotifyCreatedInEditor(NotifyEvent);
+
+	NotifyEvent.bTriggerOnDedicatedServer = false;
+}
+#endif
+
+void UAlsAnimNotify_FootstepEffects::Notify(USkeletalMeshComponent* Mesh, UAnimSequenceBase* Sequence,
+                                            const FAnimNotifyEventReference& NotifyEventReference)
+{
+	Super::Notify(Mesh, Sequence, NotifyEventReference);
 
 	if (!IsValid(Mesh) || !ALS_ENSURE(IsValid(FootstepEffectsSettings)))
 	{
@@ -45,12 +89,14 @@ void UAlsAnimNotify_FootstepEffects::Notify(USkeletalMeshComponent* Mesh, UAnimS
 		return;
 	}
 
-	const auto MeshScale{Mesh->GetComponentScale().Z};
+#if ENABLE_DRAW_DEBUG
+	const auto bDisplayDebug{UAlsDebugUtility::ShouldDisplayDebugForActor(Mesh->GetOwner(), UAlsConstants::TracesDebugDisplayName())};
+#endif
 
 	const auto* World{Mesh->GetWorld()};
-	const auto* AnimationInstance{Mesh->GetAnimInstance()};
+	const auto MeshScale{Mesh->GetComponentScale().Z};
 
-	const auto FootBoneName{FootBone == EAlsFootBone::Left ? UAlsConstants::FootLeftBoneName() : UAlsConstants::FootRightBoneName()};
+	const auto& FootBoneName{FootBone == EAlsFootBone::Left ? UAlsConstants::FootLeftBoneName() : UAlsConstants::FootRightBoneName()};
 	const auto FootTransform{Mesh->GetSocketTransform(FootBoneName)};
 
 	const auto FootZAxis{
@@ -59,34 +105,37 @@ void UAlsAnimNotify_FootstepEffects::Notify(USkeletalMeshComponent* Mesh, UAnimS
 			                                     : FVector{FootstepEffectsSettings->FootRightZAxis})
 	};
 
-#if ENABLE_DRAW_DEBUG
-	const auto bDisplayDebug{UAlsUtility::ShouldDisplayDebugForActor(Mesh->GetOwner(), UAlsConstants::TracesDebugDisplayName())};
-#endif
-
 	FCollisionQueryParams QueryParameters{__FUNCTION__, true, Mesh->GetOwner()};
 	QueryParameters.bReturnPhysicalMaterial = true;
 
-	FHitResult Hit;
-	if (World->LineTraceSingleByChannel(Hit, FootTransform.GetLocation(),
-	                                    FootTransform.GetLocation() - FootZAxis *
-	                                    (FootstepEffectsSettings->SurfaceTraceDistance * MeshScale),
-	                                    FootstepEffectsSettings->SurfaceTraceChannel, QueryParameters))
+	FHitResult FootstepHit;
+	if (!World->LineTraceSingleByChannel(FootstepHit, FootTransform.GetLocation(),
+	                                     FootTransform.GetLocation() - FootZAxis *
+	                                     (FootstepEffectsSettings->SurfaceTraceDistance * MeshScale),
+	                                     FootstepEffectsSettings->SurfaceTraceChannel, QueryParameters))
 	{
-#if ENABLE_DRAW_DEBUG
-		if (bDisplayDebug)
-		{
-			UAlsUtility::DrawDebugLineTraceSingle(World, Hit.TraceStart, Hit.TraceEnd, Hit.bBlockingHit,
-			                                      Hit, {0.333333f, 0.0f, 0.0f}, FLinearColor::Red, 10.0f);
-		}
-#endif
-	}
-	else
-	{
-		Hit.ImpactPoint = FootTransform.GetLocation();
-		Hit.ImpactNormal = FVector::UpVector;
+		// As a fallback, trace down the world Z axis if the first trace didn't hit anything.
+
+		World->LineTraceSingleByChannel(FootstepHit, FootTransform.GetLocation(),
+		                                FootTransform.GetLocation() - FVector{
+			                                0.0f, 0.0f, FootstepEffectsSettings->SurfaceTraceDistance * MeshScale
+		                                }, FootstepEffectsSettings->SurfaceTraceChannel, QueryParameters);
 	}
 
-	const auto SurfaceType{Hit.PhysMaterial.IsValid() ? Hit.PhysMaterial->SurfaceType.GetValue() : SurfaceType_Default};
+#if ENABLE_DRAW_DEBUG
+	if (bDisplayDebug)
+	{
+		UAlsDebugUtility::DrawLineTraceSingle(World, FootstepHit.TraceStart, FootstepHit.TraceEnd, FootstepHit.bBlockingHit,
+		                                      FootstepHit, {0.333333f, 0.0f, 0.0f}, FLinearColor::Red, 10.0f);
+	}
+#endif
+
+	if (!FootstepHit.bBlockingHit)
+	{
+		return;
+	}
+
+	const auto SurfaceType{FootstepHit.PhysMaterial.IsValid() ? FootstepHit.PhysMaterial->SurfaceType.GetValue() : SurfaceType_Default};
 	const auto* EffectSettings{FootstepEffectsSettings->Effects.Find(SurfaceType)};
 
 	if (EffectSettings == nullptr)
@@ -103,10 +152,10 @@ void UAlsAnimNotify_FootstepEffects::Notify(USkeletalMeshComponent* Mesh, UAnimS
 		}
 	}
 
-	const auto FootstepLocation{Hit.ImpactPoint};
+	const auto FootstepLocation{FootstepHit.ImpactPoint};
 
 	const auto FootstepRotation{
-		FRotationMatrix::MakeFromZY(Hit.ImpactNormal,
+		FRotationMatrix::MakeFromZY(FootstepHit.ImpactNormal,
 		                            FootTransform.TransformVectorNoScale(FootBone == EAlsFootBone::Left
 			                                                                 ? FVector{FootstepEffectsSettings->FootLeftYAxis}
 			                                                                 : FVector{FootstepEffectsSettings->FootRightYAxis})).ToQuat()
@@ -116,125 +165,168 @@ void UAlsAnimNotify_FootstepEffects::Notify(USkeletalMeshComponent* Mesh, UAnimS
 	if (bDisplayDebug)
 	{
 		DrawDebugCoordinateSystem(World, FootstepLocation, FootstepRotation.Rotator(),
-		                          25.0f, false, 10.0f, 0, UAlsUtility::DrawLineThickness);
+		                          25.0f, false, 10.0f, 0, UAlsDebugUtility::DrawLineThickness);
 	}
 #endif
 
 	if (bSpawnSound)
 	{
-		auto VolumeMultiplier{SoundVolumeMultiplier};
-
-		if (!bIgnoreFootstepSoundBlockCurve && IsValid(AnimationInstance))
-		{
-			VolumeMultiplier *= 1.0f - UAlsMath::Clamp01(AnimationInstance->GetCurveValue(UAlsConstants::FootstepSoundBlockCurveName()));
-		}
-
-		if (FAnimWeight::IsRelevant(VolumeMultiplier) && IsValid(EffectSettings->Sound.LoadSynchronous()))
-		{
-			UAudioComponent* Audio{nullptr};
-
-			switch (EffectSettings->SoundSpawnMode)
-			{
-				case EAlsFootstepSoundSpawnMode::SpawnAtTraceHitLocation:
-					if (World->WorldType == EWorldType::EditorPreview)
-					{
-						UGameplayStatics::PlaySoundAtLocation(World, EffectSettings->Sound.Get(), FootstepLocation,
-						                                      VolumeMultiplier, SoundPitchMultiplier);
-					}
-					else
-					{
-						Audio = UGameplayStatics::SpawnSoundAtLocation(World, EffectSettings->Sound.Get(), FootstepLocation,
-						                                               FootstepRotation.Rotator(),
-						                                               VolumeMultiplier, SoundPitchMultiplier);
-					}
-					break;
-
-				case EAlsFootstepSoundSpawnMode::SpawnAttachedToFootBone:
-					Audio = UGameplayStatics::SpawnSoundAttached(EffectSettings->Sound.Get(), Mesh, FootBoneName, FVector::ZeroVector,
-					                                             FRotator::ZeroRotator, EAttachLocation::SnapToTarget,
-					                                             true, VolumeMultiplier, SoundPitchMultiplier);
-					break;
-			}
-
-			if (IsValid(Audio))
-			{
-				Audio->SetIntParameter(FName{TEXTVIEW("FootstepType")}, static_cast<int32>(SoundType));
-			}
-		}
+		SpawnSound(Mesh, EffectSettings->Sound, FootstepLocation, FootstepRotation);
 	}
 
-	if (bSpawnDecal && IsValid(EffectSettings->DecalMaterial.LoadSynchronous()))
+	if (bSpawnDecal)
 	{
-		const auto DecalRotation{
-			FootstepRotation * FQuat{
-				(FootBone == EAlsFootBone::Left
-					 ? EffectSettings->DecalFootLeftRotationOffset
-					 : EffectSettings->DecalFootRightRotationOffset).Quaternion()
-			}
-		};
+		SpawnDecal(Mesh, EffectSettings->Decal, FootstepLocation, FootstepRotation, FootstepHit, FootZAxis);
+	}
 
-		const auto DecalLocation{
-			FootstepLocation + DecalRotation.RotateVector(FVector{EffectSettings->DecalLocationOffset} * MeshScale)
-		};
+	if (bSpawnParticleSystem)
+	{
+		SpawnParticleSystem(Mesh, EffectSettings->ParticleSystem, FootstepLocation, FootstepRotation);
+	}
+}
 
-		UDecalComponent* Decal;
+void UAlsAnimNotify_FootstepEffects::SpawnSound(USkeletalMeshComponent* Mesh, const FAlsFootstepSoundSettings& SoundSettings,
+                                                const FVector& FootstepLocation, const FQuat& FootstepRotation) const
+{
+	auto VolumeMultiplier{SoundVolumeMultiplier};
 
-		if (EffectSettings->DecalSpawnMode == EAlsFootstepDecalSpawnMode::SpawnAttachedToTraceHitComponent && Hit.Component.IsValid())
+	if (!bIgnoreFootstepSoundBlockCurve && IsValid(Mesh->GetAnimInstance()))
+	{
+		VolumeMultiplier *= 1.0f - UAlsMath::Clamp01(Mesh->GetAnimInstance()->GetCurveValue(UAlsConstants::FootstepSoundBlockCurveName()));
+	}
+
+	if (!FAnimWeight::IsRelevant(VolumeMultiplier) || !IsValid(SoundSettings.Sound.LoadSynchronous()))
+	{
+		return;
+	}
+
+	UAudioComponent* Audio{nullptr};
+
+	if (SoundSettings.SpawnMode == EAlsFootstepSoundSpawnMode::SpawnAtTraceHitLocation)
+	{
+		const auto* World{Mesh->GetWorld()};
+
+		if (World->WorldType == EWorldType::EditorPreview)
 		{
-			Decal = UGameplayStatics::SpawnDecalAttached(EffectSettings->DecalMaterial.Get(),
-			                                             FVector{EffectSettings->DecalSize} * MeshScale,
-			                                             Hit.Component.Get(), NAME_None, DecalLocation,
-			                                             DecalRotation.Rotator(), EAttachLocation::KeepWorldPosition);
+			UGameplayStatics::PlaySoundAtLocation(World, SoundSettings.Sound.Get(), FootstepLocation,
+			                                      VolumeMultiplier, SoundPitchMultiplier);
 		}
 		else
 		{
-			Decal = UGameplayStatics::SpawnDecalAtLocation(World, EffectSettings->DecalMaterial.Get(),
-			                                               FVector{EffectSettings->DecalSize} * MeshScale,
-			                                               DecalLocation, DecalRotation.Rotator());
-		}
-
-		if (IsValid(Decal))
-		{
-			Decal->SetFadeOut(EffectSettings->DecalDuration, EffectSettings->DecalFadeOutDuration, false);
+			Audio = UGameplayStatics::SpawnSoundAtLocation(World, SoundSettings.Sound.Get(), FootstepLocation,
+			                                               FootstepRotation.Rotator(),
+			                                               VolumeMultiplier, SoundPitchMultiplier);
 		}
 	}
-
-	if (bSpawnParticleSystem && IsValid(EffectSettings->ParticleSystem.LoadSynchronous()))
+	else if (SoundSettings.SpawnMode == EAlsFootstepSoundSpawnMode::SpawnAttachedToFootBone)
 	{
-		switch (EffectSettings->ParticleSystemSpawnMode)
-		{
-			case EAlsFootstepParticleEffectSpawnMode::SpawnAtTraceHitLocation:
-			{
-				const auto ParticleSystemRotation{
-					FootstepRotation * FQuat{
-						(FootBone == EAlsFootBone::Left
-							 ? EffectSettings->ParticleSystemFootLeftRotationOffset
-							 : EffectSettings->ParticleSystemFootRightRotationOffset).Quaternion()
-					}
-				};
+		const auto& FootBoneName{
+			FootBone == EAlsFootBone::Left ? UAlsConstants::FootLeftBoneName() : UAlsConstants::FootRightBoneName()
+		};
 
-				const auto ParticleSystemLocation{
-					FootstepLocation +
-					ParticleSystemRotation.RotateVector(FVector{EffectSettings->ParticleSystemLocationOffset} * MeshScale)
-				};
+		Audio = UGameplayStatics::SpawnSoundAttached(SoundSettings.Sound.Get(), Mesh, FootBoneName, FVector::ZeroVector,
+		                                             FRotator::ZeroRotator, EAttachLocation::SnapToTarget,
+		                                             true, VolumeMultiplier, SoundPitchMultiplier);
+	}
 
-				UNiagaraFunctionLibrary::SpawnSystemAtLocation(World, EffectSettings->ParticleSystem.Get(),
-				                                               ParticleSystemLocation, ParticleSystemRotation.Rotator(),
-				                                               FVector::OneVector * MeshScale, true, true, ENCPoolMethod::AutoRelease);
-			}
-			break;
+	if (IsValid(Audio))
+	{
+		Audio->SetIntParameter(FName{TEXTVIEW("FootstepType")}, static_cast<int32>(SoundType));
+	}
+}
 
-			case EAlsFootstepParticleEffectSpawnMode::SpawnAttachedToFootBone:
-				UNiagaraFunctionLibrary::SpawnSystemAttached(EffectSettings->ParticleSystem.Get(), Mesh, FootBoneName,
-				                                             FVector{EffectSettings->ParticleSystemLocationOffset} * MeshScale,
-				                                             FRotator{
-					                                             FootBone == EAlsFootBone::Left
-						                                             ? EffectSettings->ParticleSystemFootLeftRotationOffset
-						                                             : EffectSettings->ParticleSystemFootRightRotationOffset
-				                                             },
-				                                             FVector::OneVector * MeshScale, EAttachLocation::KeepRelativeOffset,
-				                                             true, ENCPoolMethod::AutoRelease);
-				break;
+void UAlsAnimNotify_FootstepEffects::SpawnDecal(USkeletalMeshComponent* Mesh, const FAlsFootstepDecalSettings& DecalSettings,
+                                                const FVector& FootstepLocation, const FQuat& FootstepRotation,
+                                                const FHitResult& FootstepHit, const FVector& FootZAxis) const
+{
+	if ((FootstepHit.ImpactNormal | FootZAxis) < FootstepEffectsSettings->DecalSpawnAngleThresholdCos)
+	{
+		return;
+	}
+
+	if (!IsValid(DecalSettings.DecalMaterial.LoadSynchronous()))
+	{
+		return;
+	}
+
+	const auto DecalRotation{
+		FootstepRotation * FQuat{
+			FootBone == EAlsFootBone::Left
+				? DecalSettings.FootLeftRotationOffsetQuaternion
+				: DecalSettings.FootRightRotationOffsetQuaternion
 		}
+	};
+
+	const auto MeshScale{Mesh->GetComponentScale().Z};
+
+	const auto DecalLocation{
+		FootstepLocation + DecalRotation.RotateVector(FVector{DecalSettings.LocationOffset} * MeshScale)
+	};
+
+	UDecalComponent* Decal{nullptr};
+
+	if (DecalSettings.SpawnMode == EAlsFootstepDecalSpawnMode::SpawnAtTraceHitLocation || !FootstepHit.Component.IsValid())
+	{
+		Decal = UGameplayStatics::SpawnDecalAtLocation(Mesh->GetWorld(), DecalSettings.DecalMaterial.Get(),
+		                                               FVector{DecalSettings.Size} * MeshScale,
+		                                               DecalLocation, DecalRotation.Rotator());
+	}
+	else if (DecalSettings.SpawnMode == EAlsFootstepDecalSpawnMode::SpawnAttachedToTraceHitComponent)
+	{
+		Decal = UGameplayStatics::SpawnDecalAttached(DecalSettings.DecalMaterial.Get(),
+		                                             FVector{DecalSettings.Size} * MeshScale,
+		                                             FootstepHit.Component.Get(), NAME_None, DecalLocation,
+		                                             DecalRotation.Rotator(), EAttachLocation::KeepWorldPosition);
+	}
+
+	if (IsValid(Decal))
+	{
+		Decal->SetFadeOut(DecalSettings.Duration, DecalSettings.FadeOutDuration, false);
+	}
+}
+
+void UAlsAnimNotify_FootstepEffects::SpawnParticleSystem(USkeletalMeshComponent* Mesh,
+                                                         const FAlsFootstepParticleSystemSettings& ParticleSystemSettings,
+                                                         const FVector& FootstepLocation, const FQuat& FootstepRotation) const
+{
+	if (!IsValid(ParticleSystemSettings.ParticleSystem.LoadSynchronous()))
+	{
+		return;
+	}
+
+	const auto MeshScale{Mesh->GetComponentScale().Z};
+
+	if (ParticleSystemSettings.SpawnMode == EAlsFootstepParticleEffectSpawnMode::SpawnAtTraceHitLocation)
+	{
+		const auto ParticleSystemRotation{
+			FootstepRotation * FQuat{
+				FootBone == EAlsFootBone::Left
+					? ParticleSystemSettings.FootLeftRotationOffsetQuaternion
+					: ParticleSystemSettings.FootRightRotationOffsetQuaternion
+			}
+		};
+
+		const auto ParticleSystemLocation{
+			FootstepLocation +
+			ParticleSystemRotation.RotateVector(FVector{ParticleSystemSettings.LocationOffset} * MeshScale)
+		};
+
+		UNiagaraFunctionLibrary::SpawnSystemAtLocation(Mesh->GetWorld(), ParticleSystemSettings.ParticleSystem.Get(),
+		                                               ParticleSystemLocation, ParticleSystemRotation.Rotator(),
+		                                               FVector::OneVector * MeshScale, true, true, ENCPoolMethod::AutoRelease);
+	}
+	else if (ParticleSystemSettings.SpawnMode == EAlsFootstepParticleEffectSpawnMode::SpawnAttachedToFootBone)
+	{
+		const auto& FootBoneName{FootBone == EAlsFootBone::Left ? UAlsConstants::FootLeftBoneName() : UAlsConstants::FootRightBoneName()};
+
+		UNiagaraFunctionLibrary::SpawnSystemAttached(ParticleSystemSettings.ParticleSystem.Get(), Mesh, FootBoneName,
+		                                             FVector{ParticleSystemSettings.LocationOffset} * MeshScale,
+		                                             FRotator{
+			                                             FootBone == EAlsFootBone::Left
+				                                             ? ParticleSystemSettings.FootLeftRotationOffset
+				                                             : ParticleSystemSettings.FootRightRotationOffset
+		                                             },
+		                                             FVector::OneVector * MeshScale, EAttachLocation::KeepRelativeOffset,
+		                                             true, ENCPoolMethod::AutoRelease);
 	}
 }

@@ -1,11 +1,12 @@
 #pragma once
 
+#include "RigVMFunctions/RigVMFunction_ControlFlow.h"
 #include "RigVMFunctions/Math/RigVMFunction_MathFloat.h"
 #include "RigVMFunctions/Simulation/RigVMFunction_SimBase.h"
 #include "Units/RigUnit.h"
 #include "AlsRigUnits.generated.h"
 
-USTRUCT(DisplayName="Clamp 01", Meta = (Category = "ALS"))
+USTRUCT(DisplayName = "Clamp 01", Meta = (Category = "ALS"))
 struct ALS_API FAlsRigVMFunction_Clamp01Float : public FRigVMFunction_MathFloatBase
 {
 	GENERATED_BODY()
@@ -44,6 +45,33 @@ public:
 	virtual void Initialize() override;
 
 	RIGVM_METHOD()
+	// ReSharper disable once CppFunctionIsNotImplemented
+	virtual void Execute() override;
+};
+
+USTRUCT(DisplayName = "Exponential Decay (Quaternion)", Meta = (Category = "ALS"))
+struct ALS_API FAlsRigVMFunction_ExponentialDecayQuaternion : public FRigVMFunction_SimBase
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(Meta = (Input))
+	FQuat Target{ForceInit};
+
+	UPROPERTY(Meta = (Input, ClampMin = 0))
+	float Lambda{1.0f};
+
+	UPROPERTY(Transient, Meta = (Output))
+	FQuat Current{ForceInit};
+
+	UPROPERTY(Transient)
+	bool bInitialized{false};
+
+public:
+	virtual void Initialize() override;
+
+	RIGVM_METHOD()
+	// ReSharper disable once CppFunctionIsNotImplemented
 	virtual void Execute() override;
 };
 
@@ -76,10 +104,7 @@ public:
 	FVector ItemBProjectionLocation{ForceInit};
 
 	UPROPERTY(Transient, Meta = (Output))
-	FVector Direction{FVector::ForwardVector};
-
-	UPROPERTY(Transient)
-	bool bInitialized{false};
+	FVector PoleDirection{FVector::XAxisVector};
 
 	UPROPERTY(Transient)
 	FCachedRigElement CachedItemA;
@@ -91,64 +116,36 @@ public:
 	FCachedRigElement CachedItemC;
 
 public:
-	virtual void Initialize() override;
-
 	RIGVM_METHOD()
+	// ReSharper disable once CppFunctionIsNotImplemented
 	virtual void Execute() override;
 };
 
-USTRUCT(DisplayName = "Hand Ik Retargeting", Meta = (Category = "ALS", NodeColor = "0 0.36 1.0"))
-struct ALS_API FAlsRigUnit_HandIkRetargeting : public FRigUnitMutable
+USTRUCT(DisplayName = "Is Game World", Meta = (Category = "ALS"))
+struct ALS_API FAlsRigVMFunction_IsGameWorld : public FRigVMFunction_ControlFlowBase
 {
 	GENERATED_BODY()
 
 public:
-	UPROPERTY(Meta = (Input, ExpandByDefault))
-	FRigElementKey LeftHandBone;
+	UPROPERTY(Transient, DisplayName = "Execute", Meta = (Input))
+	FRigVMExecuteContext ExecuteContext;
 
-	UPROPERTY(Meta = (Input, ExpandByDefault))
-	FRigElementKey LeftHandIkBone;
+	UPROPERTY(Transient, Meta = (Output))
+	FRigVMExecuteContext True;
 
-	UPROPERTY(Meta = (Input, ExpandByDefault))
-	FRigElementKey RightHandBone;
+	UPROPERTY(Transient, Meta = (Output))
+	FRigVMExecuteContext False;
 
-	UPROPERTY(Meta = (Input, ExpandByDefault))
-	FRigElementKey RightHandIkBone;
+	UPROPERTY(meta=(Output))
+	FRigVMExecuteContext Completed;
 
-	UPROPERTY(Meta = (Input, ExpandByDefault))
-	TArray<FRigElementKey> BonesToMove;
-
-	// Which hand to favor. 0.5 is equal weight for both, 1 - right hand, 0 - left hand.
-	UPROPERTY(Meta = (Input))
-	float RetargetingWeight{0.5f};
-
-	UPROPERTY(Meta = (Input))
-	float Weight{1.0f};
-
-	UPROPERTY(Meta = (Input, Constant))
-	bool bPropagateToChildren{false};
-
-	UPROPERTY(Transient)
-	bool bInitialized{false};
-
-	UPROPERTY(Transient)
-	FCachedRigElement CachedLeftHandBone;
-
-	UPROPERTY(Transient)
-	FCachedRigElement CachedLeftHandIkBone;
-
-	UPROPERTY(Transient)
-	FCachedRigElement CachedRightHandBone;
-
-	UPROPERTY(Transient)
-	FCachedRigElement CachedRightHandIkBone;
-
-	UPROPERTY(Transient)
-	TArray<FCachedRigElement> CachedBonesToMove;
+	UPROPERTY(Transient, Meta = (Singleton))
+	FName BlockToRun;
 
 public:
-	virtual void Initialize() override;
-
 	RIGVM_METHOD()
+	// ReSharper disable once CppFunctionIsNotImplemented
 	virtual void Execute() override;
+
+	virtual const TArray<FName>& GetControlFlowBlocks_Impl() const override;
 };

@@ -5,20 +5,26 @@ public class ALSEditor : ModuleRules
 	public ALSEditor(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
-		IncludeOrderVersion = EngineIncludeOrderVersion.Unreal5_3;
+		IncludeOrderVersion = EngineIncludeOrderVersion.Unreal5_5;
 
 		bEnableNonInlinedGenCppWarnings = true;
+		// UnsafeTypeCastWarningLevel = WarningLevel.Warning;
 
-		PrivateDependencyModuleNames.AddRange(new[]
+		PublicDependencyModuleNames.AddRange(new[]
 		{
-			"Core", "CoreUObject", "Engine", "AnimationModifiers", "AnimationBlueprintLibrary", "ALS"
+			"Core", "CoreUObject", "Engine", "AnimGraphRuntime", "AnimationModifiers", "AnimationBlueprintLibrary", "ALS"
 		});
 
 		if (Target.bBuildEditor)
 		{
+			PublicDependencyModuleNames.AddRange(new[]
+			{
+				"AnimGraph"
+			});
+
 			PrivateDependencyModuleNames.AddRange(new[]
 			{
-				"AnimGraph", "AnimGraphRuntime", "BlueprintGraph"
+				"BlueprintGraph"
 			});
 		}
 	}

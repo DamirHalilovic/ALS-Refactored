@@ -7,9 +7,10 @@
 class UAlsCameraSettings;
 class ACharacter;
 
-UCLASS(HideCategories = ("ComponentTick", "Clothing", "Physics", "MasterPoseComponent", "Collision", "AnimationRig",
-	"Lighting", "Deformer", "Rendering", "PathTracing", "HLOD", "Navigation", "VirtualTexture", "SkeletalMesh",
-	"LeaderPoseComponent", "Optimization", "LOD", "MaterialParameters", "TextureStreaming", "Mobile", "RayTracing"))
+UCLASS(ClassGroup = "ALS", Meta = (BlueprintSpawnableComponent),
+	HideCategories = ("ComponentTick", "Clothing", "Physics", "MasterPoseComponent", "Collision", "AnimationRig",
+		"Lighting", "Deformer", "Rendering", "PathTracing", "HLOD", "Navigation", "VirtualTexture", "SkeletalMesh",
+		"LeaderPoseComponent", "Optimization", "LOD", "MaterialParameters", "TextureStreaming", "Mobile", "RayTracing"))
 class ALSCAMERA_API UAlsCameraComponent : public USkeletalMeshComponent
 {
 	GENERATED_BODY()
@@ -18,8 +19,15 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Settings")
 	TObjectPtr<UAlsCameraSettings> Settings;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Settings", Meta = (ClampMin = 0, ClampMax = 1))
-	float PostProcessWeight;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Settings", Meta = (InlineEditConditionToggle))
+	uint8 bOverrideFieldOfView : 1 {false};
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Settings",
+		Meta = (ClampMin = 5, ClampMax = 175, EditCondition = "bOverrideFieldOfView", ForceUnits = "deg"))
+	float FieldOfViewOverride{90.0f};
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Settings", Meta = (ClampMin = 0, ClampMax = 1))
+	float PostProcessWeight{0.0f};
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", Transient)
 	TObjectPtr<ACharacter> Character;
@@ -31,43 +39,45 @@ protected:
 	float PreviousGlobalTimeDilation{1.0f};
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", Transient)
-	FVector PivotTargetLocation;
+	FVector PivotTargetLocation{ForceInit};
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", Transient)
-	FVector PivotLagLocation;
+	FVector PivotLagLocation{ForceInit};
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", Transient)
-	FVector PivotLocation;
+	FVector PivotLocation{ForceInit};
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", Transient)
-	FVector CameraLocation;
+	FVector CameraLocation{ForceInit};
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", Transient)
-	FRotator CameraRotation;
+	FRotator CameraRotation{ForceInit};
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", Transient)
+	UPROPERTY(BlueprintReadOnly, Category = "State", Transient)
 	TObjectPtr<UPrimitiveComponent> MovementBasePrimitive;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", Transient)
 	FName MovementBaseBoneName;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", Transient)
-	FVector PivotMovementBaseRelativeLagLocation;
+	FVector PivotMovementBaseRelativeLagLocation{ForceInit};
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", Transient)
-	FQuat CameraMovementBaseRelativeRotation;
+	FQuat CameraMovementBaseRelativeRotation{ForceInit};
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", Transient, Meta = (ClampMin = 0, ClampMax = 1, ForceUnits = "%"))
 	float TraceDistanceRatio{1.0f};
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", Transient, Meta = (ClampMin = 5, ClampMax = 360, ForceUnits = "deg"))
-	float CameraFov{90.0f};
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", Transient, Meta = (ClampMin = 5, ClampMax = 175, ForceUnits = "deg"))
+	float CameraFieldOfView{90.0f};
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", Transient)
-	bool bRightShoulder{true};
+	uint8 bRightShoulder : 1 {true};
 
 public:
 	UAlsCameraComponent();
+
+	virtual void PostLoad() override;
 
 	virtual void OnRegister() override;
 
@@ -84,8 +94,19 @@ public:
 	virtual void CompleteParallelAnimationEvaluation(bool bDoPostAnimationEvaluation) override;
 
 public:
+	bool IsFieldOfViewOverriden() const;
+
+	UFUNCTION(BlueprintCallable, Category = "ALS|Camera")
+	void SetFieldOfViewOverriden(bool bNewFieldOfViewOverriden);
+
+	float GetFieldOfViewOverride() const;
+
+	UFUNCTION(BlueprintCallable, Category = "ALS|Camera")
+	void SetFieldOfViewOverride(float NewFieldOfView);
+
 	float GetPostProcessWeight() const;
 
+	UFUNCTION(BlueprintCallable, Category = "ALS|Camera")
 	void SetPostProcessWeight(float NewPostProcessWeight);
 
 	bool IsRightShoulder() const;
@@ -102,7 +123,7 @@ public:
 	UFUNCTION(BlueprintPure, Category = "ALS|Camera", Meta = (ReturnDisplayName = "Trace Start"))
 	FVector GetThirdPersonTraceStartLocation() const;
 
-	UFUNCTION(BlueprintCallable, Category = "ALS|Camera")
+	UFUNCTION(BlueprintPure, Category = "ALS|Camera")
 	void GetViewInfo(FMinimalViewInfo& ViewInfo) const;
 
 private:
@@ -115,6 +136,8 @@ private:
 	FVector CalculatePivotOffset() const;
 
 	FVector CalculateCameraOffset() const;
+
+	float CalculateFovOffset() const;
 
 	FVector CalculateCameraTrace(const FVector& CameraTargetLocation, const FVector& PivotOffset,
 	                             float DeltaTime, bool bAllowLag, float& NewTraceDistanceRatio) const;
@@ -136,6 +159,26 @@ private:
 
 	void DisplayDebugTraces(const UCanvas* Canvas, float Scale, float HorizontalLocation, float& VerticalLocation) const;
 };
+
+inline bool UAlsCameraComponent::IsFieldOfViewOverriden() const
+{
+	return bOverrideFieldOfView;
+}
+
+inline void UAlsCameraComponent::SetFieldOfViewOverriden(const bool bNewFieldOfViewOverriden)
+{
+	bOverrideFieldOfView = bNewFieldOfViewOverriden;
+}
+
+inline float UAlsCameraComponent::GetFieldOfViewOverride() const
+{
+	return FieldOfViewOverride;
+}
+
+inline void UAlsCameraComponent::SetFieldOfViewOverride(const float NewFieldOfView)
+{
+	FieldOfViewOverride = FMath::Clamp(NewFieldOfView, 5.0f, 175.0f);
+}
 
 inline float UAlsCameraComponent::GetPostProcessWeight() const
 {

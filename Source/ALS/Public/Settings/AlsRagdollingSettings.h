@@ -1,6 +1,5 @@
 ﻿#pragma once
 
-#include "Engine/EngineTypes.h"
 #include "AlsRagdollingSettings.generated.h"
 
 class UAnimMontage;
@@ -12,7 +11,7 @@ struct ALS_API FAlsRagdollingSettings
 
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
-	bool bStartRagdollingOnLand{true};
+	uint8 bStartRagdollingOnLand : 1 {true};
 
 	// Ragdolling will start if the character lands with a speed greater than the specified value.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS",
@@ -23,25 +22,11 @@ public:
 	// after activation. This hack is used to prevent the ragdoll from getting a very high initial speed
 	// at unstable FPS, which can be reproduced by jumping and activating the ragdoll at the same time.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
-	bool bLimitInitialRagdollSpeed{false};
+	uint8 bLimitInitialRagdollSpeed : 1 {true};
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
-	TEnumAsByte<ECollisionChannel> GroundTraceChannel{ECC_Visibility};
+	TObjectPtr<UAnimMontage> GetUpFrontMontage;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
-	TArray<TEnumAsByte<ECollisionChannel>> GroundTraceResponseChannels;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "ALS")
-	FCollisionResponseContainer GroundTraceResponses{ECR_Ignore};
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
-	TObjectPtr<UAnimMontage> GetUpFrontMontage{nullptr};
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
-	TObjectPtr<UAnimMontage> GetUpBackMontage{nullptr};
-
-public:
-#if WITH_EDITOR
-	void PostEditChangeProperty(const FPropertyChangedEvent& PropertyChangedEvent);
-#endif
+	TObjectPtr<UAnimMontage> GetUpBackMontage;
 };

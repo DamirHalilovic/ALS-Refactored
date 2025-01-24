@@ -10,8 +10,8 @@ struct ALSCAMERA_API FAlsFirstPersonCameraSettings
 {
 	GENERATED_BODY()
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS", Meta = (ClampMin = 5, ClampMax = 360, ForceUnits = "deg"))
-	float Fov{90.0f};
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS", Meta = (ClampMin = 5, ClampMax = 175, ForceUnits = "deg"))
+	float FieldOfView{90.0f};
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
 	FName CameraSocketName{TEXTVIEW("FirstPersonCamera")};
@@ -31,8 +31,8 @@ struct ALSCAMERA_API FAlsThirdPersonCameraSettings
 {
 	GENERATED_BODY()
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS", Meta = (ClampMin = 5, ClampMax = 360, ForceUnits = "deg"))
-	float Fov{90.0f};
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS", Meta = (ClampMin = 5, ClampMax = 175, ForceUnits = "deg"))
+	float FieldOfView{90.0f};
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
 	FName FirstPivotSocketName{UAlsConstants::RootBoneName()};
@@ -56,20 +56,11 @@ struct ALSCAMERA_API FAlsThirdPersonCameraSettings
 	FVector3f TraceOverrideOffset{0.0f, 0.0f, 40.0f};
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS", Meta = (InlineEditConditionToggle))
-	bool bEnableTraceDistanceSmoothing{true};
+	uint8 bEnableTraceDistanceSmoothing : 1 {true};
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS",
 		DisplayName = "Enable Trace Distance Smoothing", Meta = (EditCondition = "bEnableTraceDistanceSmoothing"))
 	FAlsTraceDistanceSmoothingSettings TraceDistanceSmoothing;
-};
-
-USTRUCT(BlueprintType)
-struct ALSCAMERA_API FAlsCameraLagSubsteppingSettings
-{
-	GENERATED_BODY()
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS", Meta = (ClampMin = 0.005, ClampMax = 0.5, ForceUnits = "s"))
-	float LagSubstepDeltaTime{1.0f / 60.0f};
 };
 
 UCLASS(Blueprintable, BlueprintType)
@@ -79,10 +70,10 @@ class ALSCAMERA_API UAlsCameraSettings : public UDataAsset
 
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Settings")
-	bool bIgnoreTimeDilation{true};
+	uint8 bIgnoreTimeDilation : 1 {true};
 
-	// The camera will be teleported if the character has moved further than this
-	// distance in 1 frame. If zero is specified, then teleportation will be disabled.
+	// Camera will be teleported if the actor has moved farther than this
+	// distance in 1 frame. If zero is specified, teleportation will be disabled.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Settings", Meta = (ClampMin = 0, ForceUnits = "cm"))
 	float TeleportDistanceThreshold{200.0f};
 
@@ -91,13 +82,6 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Settings")
 	FAlsThirdPersonCameraSettings ThirdPerson;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Settings", Meta = (InlineEditConditionToggle))
-	bool bEnableCameraLagSubstepping;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Settings", DisplayName = "Enable Camera Lag Substepping",
-		Meta = (EditCondition = "bEnableCameraLagSubstepping"))
-	FAlsCameraLagSubsteppingSettings CameraLagSubstepping;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Settings")
 	FPostProcessSettings PostProcess;

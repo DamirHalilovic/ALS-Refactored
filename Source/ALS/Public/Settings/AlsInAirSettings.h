@@ -13,11 +13,11 @@ struct ALS_API FAlsInAirSettings
 public:
 	// Vertical velocity to lean amount curve.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
-	TObjectPtr<UCurveFloat> LeanAmountCurve{nullptr};
+	TObjectPtr<UCurveFloat> LeanAmountCurve;
 
 	// Ground prediction sweep hit time to ground prediction amount curve.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
-	TObjectPtr<UCurveFloat> GroundPredictionAmountCurve{nullptr};
+	TObjectPtr<UCurveFloat> GroundPredictionAmountCurve;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
 	TEnumAsByte<ECollisionChannel> GroundPredictionSweepChannel{ECC_Visibility};
@@ -25,11 +25,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
 	TArray<TEnumAsByte<ECollisionChannel>> GroundPredictionResponseChannels;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "ALS")
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "ALS", AdvancedDisplay)
 	FCollisionResponseContainer GroundPredictionSweepResponses{ECR_Ignore};
 
 public:
 #if WITH_EDITOR
-	void PostEditChangeProperty(const FPropertyChangedEvent& PropertyChangedEvent);
+	void PostEditChangeProperty(const FPropertyChangedEvent& ChangedEvent);
 #endif
 };
